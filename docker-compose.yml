@@ -1,0 +1,141 @@
+version: "3.8"
+
+services:
+  mysql:
+    image: mysql:8
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: testdb
+      MYSQL_USER: user
+      MYSQL_PASSWORD: password
+    volumes:
+      - db_data:/var/lib/mysql
+    ports:
+      - target: 3306
+        published: 3306
+        mode: host
+    networks:
+      - monitoring
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  mysql-exporter:
+    image: prom/mysqld-exporter
+    environment:
+      DATA_SOURCE_NAME: "exporter:exporterpassword@tcp(monitoring_mysql:3306)/"
+    command:
+      - '--collect.global_status'
+      - '--collect.info_schema.innodb_metrics'
+      - '--collect.engine_innodb_status'
+      - '--collect.perf_schema.tablelocks' 
+    ports:
+      - target: 9104
+        published: 9104
+        mode: host
+    networks:
+      - monitoring
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - target: 5672
+        published: 5672
+        mode: host
+      - target: 15672
+        published: 15672
+        mode: host
+    networks:
+      - monitoring
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  rabbitmq-exporter:
+    image: kbudde/rabbitmq-exporter
+    environment:
+      RABBIT_URL: "http://rabbitmq:15672"
+      RABBIT_USER: "guest"
+      RABBIT_PASSWORD: "guest"
+    ports:
+      - target: 9419
+        published: 9419
+        mode: host
+    networks:
+      - monitoring
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  prometheus:
+    image: prom/prometheus
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - target: 9090
+        published: 9090
+        mode: host
+    networks:
+      - monitoring
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  grafana:
+    image: grafana/grafana
+    volumes:
+      - grafana_data:/var/lib/grafana
+    ports:
+      - target: 3000
+        published: 3000
+        mode: host
+    networks:
+      - monitoring
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  node-exporter:
+    image: prom/node-exporter
+    ports:
+      - target: 9100
+        published: 9100
+        mode: host
+    networks:
+      - monitoring
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  php:
+    image: php_app  # Em vez de "build"
+    # container_name: php_app
+    working_dir: /var/www/html
+    volumes:
+      - ./php:/var/www/html  # Mapeando os scripts PHP
+    networks:
+      - monitoring
+    depends_on:
+      - mysql
+      - rabbitmq
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+volumes:
+  db_data:
+  grafana_data:
+
+networks:
+  monitoring:
